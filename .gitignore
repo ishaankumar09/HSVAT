@@ -1,0 +1,16 @@
+venv/
+env/
+
+__pycache__/
+*.pyc
+*.pyo
+
+.env
+
+data/raw/
+data/processed/
+data/logs/
+
+models/*.pt
+
+.DS_Store
