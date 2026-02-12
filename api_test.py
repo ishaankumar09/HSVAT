@@ -7,7 +7,7 @@ sys.path.insert(0, str(project_root))
 from src.utils.logging import log
 from src.utils.config_loader import load_config
 
-def test_load_config():
+def test_api_keys():
     log("Testing api keys")
     config = load_config()
 
@@ -35,11 +35,11 @@ def test_load_config():
 
 def test_reddit_api():
     try:
-        from src.data_collection.reddit_scraper import scrape_reddit_posts
+        from src.data_collection.reddit_scraper import scrape_reddit
 
         
         log("Attempting to fetch 5 posts from r/stocks...")
-        posts = scrape_reddit_posts(limit=5)
+        posts = scrape_reddit(limit=5)
         
         if posts and len(posts) > 0:
             log(f"SUCCESS: Fetched {len(posts)} Reddit posts")
@@ -54,3 +54,29 @@ def test_reddit_api():
         log(f"FAILED: {e}")
         log("Check: APIFY_API_TOKEN")
         return False
+    
+def main():
+    log("Checking API keys ...")
+    
+    results = {}
+    
+    if not test_api_keys():
+        log("RESULT: API keys not configured properly")
+        return
+    
+    results['Reddit'] = test_reddit_api()
+    
+    
+    for api, status in results.items():
+        log(f"{api}: {'PASSED' if status else 'FAILED'}")
+    
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        log("\n\nTest stopped by user")
+    except Exception as e:
+        log(f"\n\nFatal error: {e}")
+        import traceback
+        log(traceback.format_exc())
