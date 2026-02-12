@@ -55,6 +55,28 @@ def test_reddit_api():
         log("Check: APIFY_API_TOKEN")
         return False
     
+def test_twitter_api():
+    try:
+        from src.data_collection.twitter_scraper import scrape_twitter
+
+        
+        log("Attempting to fetch 5 tweets about $AAPL...")
+        tweets = scrape_twitter(query="$AAPL", limit=5)
+        
+        if tweets and len(tweets) > 0:
+            log(f"SUCCESS: Fetched {len(tweets)} tweets")
+            log(f"  Sample tweet: {tweets[0].get('text', '')[:80]}...")
+            return True
+        else:
+            log("FAILED: No tweets returned")
+            log(" Check: Apify subscription")
+            return False
+            
+    except Exception as e:
+        log(f"FAILED: {e}")
+        log("Check: APIFY_API_TOKEN")
+        return False
+    
 def main():
     log("Checking API keys ...")
     
@@ -65,6 +87,7 @@ def main():
         return
     
     results['Reddit'] = test_reddit_api()
+    results['Twitter'] = test_twitter_api()
     
     
     for api, status in results.items():
