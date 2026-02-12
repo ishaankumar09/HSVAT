@@ -12,7 +12,7 @@ except:
     def log(message):
         print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC] {message}")
 
-hastags = ["techstocks", "tech", "stocks", "trading", "stockmarket", "investing", "defensestocks"]  
+hashtags = ["techstocks", "tech", "stocks", "trading", "stockmarket", "investing", "defensestocks"]  
 
 def build_query(use_watchlist: bool = True) -> str:
     if use_watchlist:
@@ -20,18 +20,18 @@ def build_query(use_watchlist: bool = True) -> str:
             from src.utils.config_loader import load_watchlist
             watchlist = load_watchlist()
             if watchlist:
-                ticker_queries = [f"#{ticker}" for ticker in watchlist[:20]]
-                hastag_queries = [f"#{tag}" for tag in hastags]
-                all_terms = ticker_queries + hastag_queries
+                ticker_queries = [f"${ticker}" for ticker in watchlist[:20]]
+                hashtag_queries = [f"#{tag}" for tag in hashtags]
+                all_terms = ticker_queries + hashtag_queries
                 query = " OR ".join(all_terms)
                 return query
         except:
             pass
 
     tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "CRM"]
-    ticker_queries = [f"#{ticker}" for ticker in tickers]
-    hastag_queries = [f"#{tag}" for tag in hastags]
-    all_terms = ticker_queries + hastag_queries
+    ticker_queries = [f"${ticker}" for ticker in tickers]
+    hashtag_queries = [f"#{tag}" for tag in hashtags]
+    all_terms = ticker_queries + hashtag_queries
     query = " OR ".join(all_terms)
     return query
 
@@ -52,6 +52,7 @@ def scrape_tweets(query: str, limit: int) -> list:
             "maxItems": limit,
             "query": query,
             "replies": "exclude",
+            "retweets": "exclude",
             "proxyConfiguration": {
                 "useApifyProxy": True,
                 "apifyProxyGroups": ["RESIDENTIAL"],
