@@ -57,11 +57,11 @@ def test_reddit_api():
     
 def test_twitter_api():
     try:
-        from src.data_collection.twitter_scraper import scrape_twitter
+        from src.data_collection.twitter_scraper import scrape_tweets
 
         
         log("Attempting to fetch 5 tweets about $AAPL...")
-        tweets = scrape_twitter(query="$AAPL", limit=5)
+        tweets = scrape_tweets(query="$AAPL", limit=5)
         
         if tweets and len(tweets) > 0:
             log(f"SUCCESS: Fetched {len(tweets)} tweets")
@@ -77,6 +77,41 @@ def test_twitter_api():
         log("Check: APIFY_API_TOKEN")
         return False
     
+def test_openai_api():
+    try:
+        from src.utils.config_loader import load_config
+        from openai import OpenAI
+
+        config = load_config()
+        client = OpenAI(api_key=config.get("OPENAI_API_KEY"))
+
+        log("sending test prompt to OpenAI...")
+
+        response = client.chat.completions.create(
+             model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say 'API test successful' in exactly those words."}
+            ],
+            max_tokens=20
+        )
+
+        result = response.choices[0].message.content
+
+        if "API test successful" in result or "successful" in result.lower():
+            log("SUCCESS: OpenAI API is working")
+            log(f"  Response: {result}")
+            return True
+        else:
+            log(f"SUCCESS: OpenAI API responded (unusual response: {result})")
+            return True
+        
+    except Exception as e:
+        log(f"FAILED: {e}")
+        log("Check: OPENAI_API_KEY")
+        return False
+        
+
 def main():
     log("Checking API keys ...")
     
@@ -88,6 +123,7 @@ def main():
     
     results['Reddit'] = test_reddit_api()
     results['Twitter'] = test_twitter_api()
+    results['OpenAI'] = test_openai_api()
     
     
     for api, status in results.items():

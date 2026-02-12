@@ -61,7 +61,7 @@ def scrape_tweets(query: str, limit: int) -> list:
 
         log(f"Starting Twitter scraper, limit={limit}...")
 
-        run = client.actor("G8hR9sp2nkjI2om8X").call(run_input)
+        run = client.actor("G8hR9sp2nkjI2om8X").call(run_input=run_input)
 
         tweets = []
         for item in client.dataset(run["defaultDatasetId"]).iterate_items():
