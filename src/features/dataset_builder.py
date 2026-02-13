@@ -1,0 +1,149 @@
+import pandas as pd
+from pathlib import Path
+import sys
+import glob
+
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.features.sentiment_aggregator import floor_timestamp_to_bucket
+
+def load_latest_price_file(ticker: str) ->pd.DataFrame:
+
+    data_dir = project_root / "data" / "raw" / "price"
+    csv_files = glob.glob(str(data_dir / f"{ticker}_*.csv"))
+
+    if not csv_files:
+        return pd.DataFrame()
+    
+    latest_file = csv_files[-1]
+    return pd.read_csv(latest_file)
+
+def load_latest_sentiment_agg() -> pd.DataFrame:
+    data_dir = project_root / "data" / "processed" / "sentiment"
+    csv_files = glob.glob(str(data_dir / f"sentiment_agg_*.csv"))
+
+    if not csv_files:
+        return pd.DataFrame()
+    
+    latest_file = csv_files[-1]
+    return pd.read_csv(latest_file)
+
+def merge_sentiment_with_price(sentiment_df: pd.DataFrame, price_df: pd.DataFrame, bucket: str = "15min") -> pd.DataFrame:
+
+    price_df = price_df.copy()
+    sentiment_df = sentiment_df.copy()
+
+    price_df['timestamp'] = pd.to_datetime(price_df['timestamp'],utc=True)
+    price_df['timestamp'] = price_df["timestamp"].apply(lambda x: floor_timestamp_to_bucket(x, bucket))
+
+    sentiment_df["bucket_start"] = pd.to_datetime(sentiment_df["bucket_start"], utc=True)
+    
+    sentiment_df = sentiment_df.sort_values("bucket_start")
+    sentiment_df["bucket_start"] = sentiment_df["bucket_start"].shift(-1)
+    sentiment_df = sentiment_df.dropna(subset=["bucket_start"])
+
+    merged = pd.merge(price_df, sentiment_df, on ="bucket_start", how="left")
+
+    merged = merged.fillna(0)    
+    return merged
+
+def add_target_column(df: pd.DataFrame, threshold: float = 0.001) -> pd.DataFrame:
+
+    df = df.copy()
+    
+    df["close_shifted"] = df["close"].shift(-1)
+    
+
+    df["pct_change"] = (df["close_shifted"] - df["close"]) / df["close"]
+    
+
+    df["target_direction"] = 1  
+    df.loc[df["pct_change"] < -threshold, "target_direction"] = 0  
+    df.loc[df["pct_change"] > threshold, "target_direction"] = 2   
+    
+    df = df.dropna(subset=["close_shifted"])
+    
+    return df
+
+def build_train_and_test_datasets(train_ratio: float = 0.7) -> tuple:
+
+    sentiment_df = load_latest_sentiment_agg()
+    price_df = load_latest_price_file("AAPL")
+    
+    if sentiment_df.empty or price_df.empty:
+        return "", ""
+    
+    merged = merge_sentiment_with_price(sentiment_df, price_df)
+    merged = add_target_column(merged)
+    
+    merged = merged.sort_values("timestamp").reset_index(drop=True)
+    
+    split_idx = int(len(merged) * train_ratio)
+    
+    train_df = merged.iloc[:split_idx]
+    test_df = merged.iloc[split_idx:]
+    
+    data_dir = project_root / "data" / "processed" / "datasets"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    train_path = data_dir / "train_dataset.csv"
+    test_path = data_dir / "test_dataset.csv"
+    
+    train_df.to_csv(train_path, index=False)
+    test_df.to_csv(test_path, index=False)
+    
+    return str(train_path), str(test_path)
+
+def build_full_dataset(tickers: list = None, bucket: str = "15min") -> str:
+    from src.utils.logging import log
+    from src.utils.config_loader import load_watchlist
+    
+    if tickers is None:
+        tickers = load_watchlist()
+    
+    sentiment_df = load_latest_sentiment_agg()
+    
+    if sentiment_df.empty:
+        log("Missing sentiment data. Cannot build dataset.")
+        return ""
+    
+    all_ticker_data = []
+    
+    for ticker in tickers:
+        price_df = load_latest_price_file(ticker)
+        
+        if price_df.empty:
+            log(f" No price data for {ticker}, skipping")
+            continue
+        
+        merged = merge_sentiment_with_price(sentiment_df, price_df, bucket)
+        merged = add_target_column(merged)
+        
+        merged["ticker"] = ticker
+        
+        all_ticker_data.append(merged)
+        log(f" {ticker}: {len(merged)} samples")
+    
+    if not all_ticker_data:
+        log("No valid ticker data found. Cannot build dataset.")
+        return ""
+    
+    full_df = pd.concat(all_ticker_data, ignore_index=True)
+    
+
+    full_df = full_df.sort_values("timestamp").reset_index(drop=True)
+    
+    data_dir = project_root / "data" / "processed" / "datasets"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    full_path = data_dir / "full_dataset.csv"
+    full_df.to_csv(full_path, index=False)
+    
+    log(f"Full dataset saved: {len(full_df)} samples from {len(all_ticker_data)} tickers")
+    log(f"Target distribution: {full_df['target_direction'].value_counts().to_dict()}")
+    
+    return str(full_path)
+
+
+
