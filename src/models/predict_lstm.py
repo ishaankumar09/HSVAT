@@ -43,7 +43,12 @@ def predict_direction_labels(model: TinyLSTM, X: torch.Tensor) -> np.ndarray:
     predictions = torch.argmax(probs, dim=1)
     return predictions.numpy()
 
-def predict_action(prediction: int) -> str:
+def predict_action(prediction: int, probabilities: torch.Tensor = None, confidence_threshold: float = 0.5) -> str:
     
+    if probabilities is not None:
+        max_prob = probabilities[prediction].item() if torch.is_tensor(probabilities) else probabilities[prediction]
+        if max_prob < confidence_threshold:
+            return "stay"
+        
     action_map = {0: "short", 1: "stay", 2: "buy"}
     return action_map.get(prediction, "stay")

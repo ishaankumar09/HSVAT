@@ -110,8 +110,29 @@ def test_openai_api():
         log(f"FAILED: {e}")
         log("Check: OPENAI_API_KEY")
         return False
-        
+    
+def test_alpaca_api():
+    try:
+        from src.trading.alpaca import get_account_info
 
+        log("Attempting to fetch Alpaca account info...")
+        account = get_account_info()
+
+        if account:
+            balance = account.get("buying_power", 0)
+            log(f"SUCCESS: Connected to Alpaca")
+            log(f"  Paper trading balance: ${balance:,.2f}")
+            return True
+        else:
+            log("FAILED: No account info returned")
+            log("Check: Alpaca API keys")
+            return False
+    
+    except Exception as e:
+        log(f"FAILED: {e}")
+        log("Check: ALPACA_API_KEY and ALPACA_SECRET_KEY")
+        return False
+ 
 def main():
     log("Checking API keys ...")
     
@@ -124,6 +145,7 @@ def main():
     results['Reddit'] = test_reddit_api()
     results['Twitter'] = test_twitter_api()
     results['OpenAI'] = test_openai_api()
+    results['Alpaca'] = test_alpaca_api()
     
     
     for api, status in results.items():
