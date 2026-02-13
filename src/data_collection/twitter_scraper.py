@@ -12,24 +12,11 @@ except:
     def log(message):
         print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC] {message}")
 
-hashtags = ["techstocks", "tech", "stocks", "trading", "stockmarket", "investing", "defensestocks"]  
+hashtags = ["techstocks", "tech", "stocks", "trading", "stockmarket", "investing", "defensestocks", "stockstowatch"]  
+stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC",  "ORCL", "CSCO", "ADBE","BA", "LMT", "RTX", "NOC", "GD", "HON", "CAT", "JPM", "BAC", "WMT", "JNJ", "PG", "XOM", "CVX", "KO", "PEP"]
 
-def build_query(use_watchlist: bool = True) -> str:
-    if use_watchlist:
-        try:
-            from src.utils.config_loader import load_watchlist
-            watchlist = load_watchlist()
-            if watchlist:
-                ticker_queries = [f"${ticker}" for ticker in watchlist[:20]]
-                hashtag_queries = [f"#{tag}" for tag in hashtags]
-                all_terms = ticker_queries + hashtag_queries
-                query = " OR ".join(all_terms)
-                return query
-        except:
-            pass
-
-    tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC", "CRM"]
-    ticker_queries = [f"${ticker}" for ticker in tickers]
+def build_query() -> str: 
+    ticker_queries = [f"${ticker}" for ticker in stocks]
     hashtag_queries = [f"#{tag}" for tag in hashtags]
     all_terms = ticker_queries + hashtag_queries
     query = " OR ".join(all_terms)
@@ -98,8 +85,8 @@ def scrape_tweets(query: str, limit: int) -> list:
         log(f"Error scraping tweets: {e}")
         return []
     
-def save_tweets(limit: int = 50, use_watchlist: bool = True) -> str:
-    query = build_query(use_watchlist)
+def save_tweets(limit: int = 50) -> str:
+    query = build_query()
     log(f"Twitter search query: {query[:200]}...")
 
     tweets = scrape_tweets(query, limit)

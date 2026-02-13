@@ -1,1 +1,2 @@
 from .alpaca import get_alpaca_client, get_account_info, place_market_order, place_bracket_order, get_positions, close_position
+from .simulator import run_backtest, execute_paper_trade, fixed_fraction_position, stop_loss, calc_take_profit, calc_atr
