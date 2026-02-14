@@ -135,6 +135,9 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
     patience = 5
     patience_counter = 0
     
+    train_losses = []
+    val_losses = []
+    
     for epoch in range(epochs):
         model.train()
         train_loss = 0.0
@@ -167,6 +170,9 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
                 val_loss += loss.item()
         
         avg_val_loss = val_loss / (len(X_val) // batch_size + 1)
+        
+        train_losses.append(avg_train_loss)
+        val_losses.append(avg_val_loss)
         
         log(f"Epoch {epoch + 1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
         
@@ -215,3 +221,30 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
     
     log(f"Test Loss: {avg_test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
     log(f"Model saved to {model_path}")
+    
+    history_df = pd.DataFrame({
+        'epoch': list(range(1, len(train_losses) + 1)),
+        'train_loss': train_losses,
+        'val_loss': val_losses
+    })
+    
+    history_path = model_dir / "training_history.csv"
+    history_df.to_csv(history_path, index=False)
+    log(f"Training history saved to {history_path}")
+    
+    import json
+    test_metrics = {
+        'test_loss': float(avg_test_loss),
+        'test_accuracy': float(test_accuracy),
+        'num_train_samples': int(len(X_train)),
+        'num_val_samples': int(len(X_val)),
+        'num_test_samples': int(len(X_test)),
+        'final_epoch': int(len(train_losses)),
+        'best_val_loss': float(best_val_loss),
+        'timestamp': pd.Timestamp.now(tz='UTC').isoformat()
+    }
+    
+    metrics_path = model_dir / "test_metrics.json"
+    with open(metrics_path, 'w') as f:
+        json.dump(test_metrics, f, indent=2)
+    log(f"Test metrics saved to {metrics_path}")
