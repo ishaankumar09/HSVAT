@@ -48,7 +48,7 @@ def merge_sentiment_with_price(sentiment_df: pd.DataFrame, price_df: pd.DataFram
     merged = merged.fillna(0)    
     return merged
 
-def add_target_column(df: pd.DataFrame, threshold: float = 0.001) -> pd.DataFrame:
+def add_target_column(df: pd.DataFrame, threshold: float = 0.0) -> pd.DataFrame:
 
     df = df.copy()
     
@@ -58,9 +58,7 @@ def add_target_column(df: pd.DataFrame, threshold: float = 0.001) -> pd.DataFram
     df["pct_change"] = (df["close_shifted"] - df["close"]) / df["close"]
     
 
-    df["target_direction"] = 1  
-    df.loc[df["pct_change"] < -threshold, "target_direction"] = 0  
-    df.loc[df["pct_change"] > threshold, "target_direction"] = 2   
+    df["target_direction"] = (df["pct_change"]> 0).astype(int)
     
     df = df.dropna(subset=["close_shifted"])
     

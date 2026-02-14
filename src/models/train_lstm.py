@@ -123,9 +123,9 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
     log(f"Class weights: {class_weights.tolist()}")
     
     input_dim = X_train.shape[2]
-    output_dim = 3
+    output_dim = 2
     
-    model = create_model(input_dim, output_dim, hidden_dim=64, num_layers=2, dropout=dropout)
+    model = create_model(input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=0.3)
     
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr)

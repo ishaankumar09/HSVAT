@@ -50,5 +50,5 @@ def predict_action(prediction: int, probabilities: torch.Tensor = None, confiden
         if max_prob < confidence_threshold:
             return "stay"
         
-    action_map = {0: "short", 1: "stay", 2: "buy"}
+    action_map = {0: "short", 1: "buy"}
     return action_map.get(prediction, "stay")

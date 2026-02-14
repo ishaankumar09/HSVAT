@@ -30,7 +30,7 @@ def setup_and_train(bucket: str = "15min"):
     for i, ticker in enumerate(training_tickers, 1):
         log(f"  [{i}/{len(training_tickers)}] Fetching {ticker}...")
         try:
-            save_price_data(ticker=ticker, interval="1m", period="30d")
+            save_price_data(ticker=ticker, interval="1m", period="7d")
         except Exception as e:
             log(f" Error fetching {ticker}: {e}")
     

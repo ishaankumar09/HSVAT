@@ -154,13 +154,13 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                 log(f"CYCLE #{cycle_count} - {current_candle.strftime('%Y-%m-%d %H:%M:%S UTC')}")
                 
                 try:
-                    if cycle_count % 2 == 1:
+                    if True:
                         log("Step 1: Collecting Reddit posts (every other cycle)...")
-                        save_reddit_posts(limit=100)
+                        save_reddit_posts(limit=75)
                         
                         log("Step 2: Collecting Twitter posts...")
                         try:
-                            save_tweets(limit=30)
+                            save_tweets(limit=35)
                         except Exception as e:
                             log(f"Twitter collection failed (will use Reddit only): {e}")
                         
