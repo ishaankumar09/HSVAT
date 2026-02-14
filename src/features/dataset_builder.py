@@ -10,7 +10,7 @@ from src.features.sentiment_aggregator import floor_timestamp_to_bucket
 
 def load_latest_price_file(ticker: str) ->pd.DataFrame:
 
-    data_dir = project_root / "data" / "raw" / "price"
+    data_dir = project_root / "data" / "raw" / "price_data"
     csv_files = glob.glob(str(data_dir / f"{ticker}_*.csv"))
 
     if not csv_files:
@@ -43,7 +43,7 @@ def merge_sentiment_with_price(sentiment_df: pd.DataFrame, price_df: pd.DataFram
     sentiment_df["bucket_start"] = sentiment_df["bucket_start"].shift(-1)
     sentiment_df = sentiment_df.dropna(subset=["bucket_start"])
 
-    merged = pd.merge(price_df, sentiment_df, on ="bucket_start", how="left")
+    merged = pd.merge(price_df, sentiment_df, left_on="timestamp", right_on="bucket_start", how="left")
 
     merged = merged.fillna(0)    
     return merged

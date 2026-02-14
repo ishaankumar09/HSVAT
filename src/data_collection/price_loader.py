@@ -12,11 +12,11 @@ def load_price_data(ticker: str, interval: str = "1m", period: str = "1d") -> pd
     if df.empty:
         return pd.DataFrame()
     
-    df.reset_index()
+    df = df.reset_index()
     df.columns = [c.lower().replace(" ", "_") for c in df.columns]
 
     if "datetime" in df.columns:
-        df.rename(columns={"datetime": "timestamp"})
+        df = df.rename(columns={"datetime": "timestamp"})
     elif "date" in df.columns:
         df = df.rename(columns={"date": "timestamp"})
 

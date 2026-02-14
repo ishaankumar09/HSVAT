@@ -43,6 +43,9 @@ def setup_and_train(bucket: str = "15min"):
     log("[6/7] Aggregating sentiment...")
     save_aggregated_sentiment(bucket=bucket)
 
+    log("[7/7] Building full dataset...")
+    build_full_dataset(bucket=bucket)
+
     log("[8/8] Training LSTM model...")
     train_lstm_model(epochs=10, dropout=0.2)
 

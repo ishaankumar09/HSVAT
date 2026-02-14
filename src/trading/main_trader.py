@@ -26,7 +26,7 @@ from src.utils.stock_filter import is_blue_chip, has_sufficient_sentiment
 from src.features.sentiment_aggregator import floor_timestamp_to_bucket
 
 def get_ticker_from_sentiment() -> list:
-    data_dir = project_root / "data" / "proccessed" / "sentiment"
+    data_dir = project_root / "data" / "processed" / "sentiment"
     ticker_files = sorted(glob.glob(str(data_dir / "sentiment_by_ticker_*.csv")))
 
     if not ticker_files:
@@ -64,7 +64,7 @@ def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len:
 
     from src.features.dataset_builder import load_latest_sentiment_agg, load_latest_price_file, merge_sentiment_with_price
 
-    sentiment_df = load_latest_sentiment_agg
+    sentiment_df = load_latest_sentiment_agg()
     price_df = load_latest_price_file(ticker)
 
     if sentiment_df.empty or price_df.empty:
@@ -81,7 +81,7 @@ def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len:
     features = merged[available_features].values
 
     try: 
-        model, mean, std, input_dim, output_dim = load_trained_model
+        model, mean, std, input_dim, output_dim = load_trained_model()
         if mean is not None and std is not None:
             features = (features - mean) / std
         else: 
@@ -106,7 +106,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
     else: 
         log("Trading Bot running 24/7 (only trade during market hours)")
 
-    model_path = project_root / "models" / "lstm_volitility.pt"
+    model_path = project_root / "models" / "lstm_volatility.pt"
     if not model_path.exists():
         log("Model not found, run setup")
         return

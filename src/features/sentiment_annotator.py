@@ -31,6 +31,8 @@ def load_finbert():
         except Exception as e:
             log(f"Error loading FinBERT model: {e}")
             return None, None
+        
+    return _finbert_model, _finbert_tokenizer
 
 def analyze_sentiment(text: str) -> tuple:
     import time
