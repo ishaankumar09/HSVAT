@@ -1,4 +1,4 @@
 from .ticker_sorter import save_via_ticker    
 from .sentiment_annotator import annotate_sentiment_for_df, save_sentiment
 from .sentiment_aggregator import load_latest_sentiment, aggregate_sentiment, save_aggregated_sentiment
-from .dataset_builder import load_latest_price_file, load_latest_sentiment_agg, merge_sentiment_and_price, add_target_column, build_full_dataset
+from .dataset_builder import load_latest_price_file, load_latest_sentiment_agg, merge_sentiment_with_price, add_target_column, build_full_dataset
