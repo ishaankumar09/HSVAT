@@ -48,6 +48,31 @@ def merge_sentiment_with_price(sentiment_df: pd.DataFrame, price_df: pd.DataFram
     merged = merged.fillna(0)    
     return merged
 
+def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """Add RSI, moving averages, momentum, volume ratio for richer price context."""
+    df = df.copy()
+    
+    close = df["close"].astype(float)
+    volume = df["volume"].astype(float)
+    
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = (-delta).where(delta < 0, 0.0)
+    avg_gain = gain.rolling(window=14, min_periods=1).mean()
+    avg_loss = loss.rolling(window=14, min_periods=1).mean()
+    rs = avg_gain / avg_loss.replace(0, 1e-10)
+    df["rsi"] = (100 - (100 / (1 + rs))).fillna(50)
+    
+    df["sma_20"] = close.rolling(window=20, min_periods=1).mean().fillna(close)
+    df["sma_50"] = close.rolling(window=50, min_periods=1).mean().fillna(close)
+    
+    df["momentum"] = close.pct_change(periods=10).fillna(0)
+    
+    volume_sma = volume.rolling(window=20, min_periods=1).mean().replace(0, 1e-10)
+    df["volume_ratio"] = (volume / volume_sma).fillna(1.0)
+    
+    return df
+
 def add_target_column(df: pd.DataFrame, threshold: float = 0.0) -> pd.DataFrame:
 
     df = df.copy()
@@ -73,6 +98,7 @@ def build_train_and_test_datasets(train_ratio: float = 0.7) -> tuple:
         return "", ""
     
     merged = merge_sentiment_with_price(sentiment_df, price_df)
+    merged = add_technical_indicators(merged)
     merged = add_target_column(merged)
     
     merged = merged.sort_values("timestamp").reset_index(drop=True)
@@ -116,6 +142,7 @@ def build_full_dataset(tickers: list = None, bucket: str = "15min") -> str:
             continue
         
         merged = merge_sentiment_with_price(sentiment_df, price_df, bucket)
+        merged = add_technical_indicators(merged)
         merged = add_target_column(merged)
         
         merged["ticker"] = ticker

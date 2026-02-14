@@ -12,7 +12,11 @@ sys.path.insert(0, str(project_root))
 from src.models.lstm_model import create_model
 from src.utils.logging import log
 
-FEATURE_COLS = ["open", "high", "low", "close", "volume", "num_posts", "num_pos", "num_neg", "num_neu", "mean_sentiment_score"]
+FEATURE_COLS = [
+    "open", "high", "low", "close", "volume",
+    "num_posts", "num_pos", "num_neg", "num_neu", "mean_sentiment_score",
+    "rsi", "sma_20", "sma_50", "momentum", "volume_ratio"
+]
 TARGET_COL = "target_direction"
 
 def load_dataset(path: str, fit_scaler: bool = True, scaler_params: dict = None) -> tuple:
@@ -53,7 +57,7 @@ def create_sequences(features: torch.Tensor, targets: torch.Tensor, seq_len: int
     
     return X, y
 
-def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, dropout: float = 0.2) -> None:
+def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, dropout: float = 0.3) -> None:
     full_dataset_path = project_root / "data" / "processed" / "datasets" / "full_dataset.csv"
     
     if not full_dataset_path.exists():
@@ -61,7 +65,7 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
         from src.features.dataset_builder import build_full_dataset
         build_full_dataset()
     
-    df = pd.read_csv(full_dataset_path)
+    df = pd.read_csv(full_dataset_path, low_memory=False)
     
     total_samples = len(df)
     train_end = int(total_samples * 0.7)
@@ -91,6 +95,11 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
     train_features = (train_features - mean) / std
     val_features = (val_features - mean) / std
     test_features = (test_features - mean) / std
+    
+    # Replace NaN/Inf so LSTM doesn't crash
+    train_features = np.nan_to_num(train_features, nan=0.0, posinf=0.0, neginf=0.0)
+    val_features = np.nan_to_num(val_features, nan=0.0, posinf=0.0, neginf=0.0)
+    test_features = np.nan_to_num(test_features, nan=0.0, posinf=0.0, neginf=0.0)
     
     train_features_tensor = torch.tensor(train_features, dtype=torch.float32)
     train_targets_tensor = torch.tensor(train_targets, dtype=torch.long)
@@ -125,14 +134,15 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
     input_dim = X_train.shape[2]
     output_dim = 2
     
-    model = create_model(input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=0.3)
+    model = create_model(input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=dropout)
     
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
     batch_size = 32
     best_val_loss = float('inf')
-    patience = 5
+    patience = 8
     patience_counter = 0
     
     train_losses = []
@@ -174,6 +184,8 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
         train_losses.append(avg_train_loss)
         val_losses.append(avg_val_loss)
         
+        scheduler.step(avg_val_loss)
+        
         log(f"Epoch {epoch + 1}/{epochs} - Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
         
         if avg_val_loss < best_val_loss:
@@ -189,7 +201,10 @@ def train_lstm_model(epochs: int = 10, seq_len: int = 20, lr: float = 1e-3, drop
                 'mean': mean,
                 'std': std,
                 'input_dim': input_dim,
-                'output_dim': output_dim
+                'output_dim': output_dim,
+                'hidden_dim': 128,
+                'num_layers': 3,
+                'dropout': dropout,
             }, model_path)
         else:
             patience_counter += 1

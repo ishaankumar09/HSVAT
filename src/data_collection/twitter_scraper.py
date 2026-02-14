@@ -13,7 +13,14 @@ except:
         print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC] {message}")
 
 hashtags = ["techstocks", "tech", "stocks", "trading", "stockmarket", "investing", "defensestocks", "stockstowatch"]  
-stocks = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC",  "ORCL", "CSCO", "ADBE","BA", "LMT", "RTX", "NOC", "GD", "HON", "CAT", "JPM", "BAC", "WMT", "JNJ", "PG", "XOM", "CVX", "KO", "PEP"]
+stocks = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC",
+    "ORCL", "CSCO", "ADBE", "BA", "LMT", "RTX", "NOC", "GD", "HON", "CAT",
+    "JPM", "BAC", "WMT", "JNJ", "PG", "XOM", "CVX", "KO", "PEP",
+    "COST", "HD", "MCD", "V", "MA", "UNH", "ABBV", "TMO", "ACN",
+    "ABT", "DHR", "NEE", "LIN", "BMY", "PM", "UNP", "QCOM", "TXN",
+    "LOW", "SCHW", "GS", "AXP", "BLK"
+]
 
 def build_query() -> str: 
     ticker_queries = [f"${ticker}" for ticker in stocks]

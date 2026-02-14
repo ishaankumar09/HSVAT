@@ -62,7 +62,12 @@ def get_ticker_from_sentiment() -> list:
 
 def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len: int = 20) -> tuple:
 
-    from src.features.dataset_builder import load_latest_sentiment_agg, load_latest_price_file, merge_sentiment_with_price
+    from src.features.dataset_builder import (
+        load_latest_sentiment_agg,
+        load_latest_price_file,
+        merge_sentiment_with_price,
+        add_technical_indicators,
+    )
 
     sentiment_df = load_latest_sentiment_agg()
     price_df = load_latest_price_file(ticker)
@@ -71,6 +76,7 @@ def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len:
         return None, None
     
     merged = merge_sentiment_with_price(sentiment_df, price_df, bucket)
+    merged = add_technical_indicators(merged)
 
     if len(merged) < seq_len:
         return None, None
@@ -216,7 +222,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             probs = predict_sequences(model, features_tensor)
                             prediction = torch.argmax(probs, dim=1).numpy()
                             
-                            action = predict_action(prediction[0], probs[0], confidence_threshold=0.5)
+                            action = predict_action(prediction[0], probs[0], confidence_threshold=0.6)
                             
                             confidence = probs[0][prediction[0]].item()
                             log(f"{ticker}: {action.upper()} (class={prediction[0]}, confidence={confidence:.1%}) at ${current_price:.2f}")

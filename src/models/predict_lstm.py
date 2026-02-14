@@ -19,11 +19,14 @@ def load_trained_model() -> tuple:
     checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
     
     input_dim = checkpoint.get('input_dim', 10)
-    output_dim = checkpoint.get('output_dim', 3)
+    output_dim = checkpoint.get('output_dim', 2)
     mean = checkpoint.get('mean', None)
     std = checkpoint.get('std', None)
+    hidden_dim = checkpoint.get('hidden_dim', 128)
+    num_layers = checkpoint.get('num_layers', 3)
+    dropout = checkpoint.get('dropout', 0.3)
     
-    model = TinyLSTM(input_dim, hidden_dim=64, num_layers=2, output_dim=output_dim, dropout=0.2)
+    model = TinyLSTM(input_dim, hidden_dim=hidden_dim, num_layers=num_layers, output_dim=output_dim, dropout=dropout)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     
