@@ -44,20 +44,28 @@ def load_dataset(path: str, fit_scaler: bool = True, scaler_params: dict = None)
     
     return features_tensor, targets_tensor, mean, std
 
-def create_sequences(features: torch.Tensor, targets: torch.Tensor, seq_len: int) -> tuple:
+def create_sequences(
+    features: torch.Tensor,
+    targets: torch.Tensor,
+    seq_len: int,
+    step: int = 1,
+) -> tuple:
     X = []
     y = []
-    
-    for i in range(len(features) - seq_len):
-        X.append(features[i:i + seq_len])
+    for i in range(0, len(features) - seq_len, step):
+        X.append(features[i : i + seq_len])
         y.append(targets[i + seq_len])
-    
     X = torch.stack(X)
     y = torch.stack(y)
-    
     return X, y
 
-def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, dropout: float = 0.3) -> None:
+def train_lstm_model(
+    epochs: int = 25,
+    seq_len: int = 20,
+    lr: float = 1e-3,
+    dropout: float = 0.375,
+    train_sequence_step: int = 7,
+) -> None:
     full_dataset_path = project_root / "data" / "processed" / "datasets" / "full_dataset.csv"
     
     if not full_dataset_path.exists():
@@ -110,8 +118,11 @@ def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, drop
     test_features_tensor = torch.tensor(test_features, dtype=torch.float32)
     test_targets_tensor = torch.tensor(test_targets, dtype=torch.long)
     
-    X_train, y_train = create_sequences(train_features_tensor, train_targets_tensor, seq_len)
-    
+    # Strided sequences for train to reduce overlap/overfitting; full sequences for val/test
+    X_train, y_train = create_sequences(
+        train_features_tensor, train_targets_tensor, seq_len, step=train_sequence_step
+    )
+
     val_context = train_features_tensor[-seq_len:]
     val_features_with_context = torch.cat([val_context, val_features_tensor], dim=0)
     val_targets_with_context = torch.cat([train_targets_tensor[-seq_len:], val_targets_tensor], dim=0)
@@ -122,7 +133,7 @@ def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, drop
     test_targets_with_context = torch.cat([val_targets_tensor[-seq_len:], test_targets_tensor], dim=0)
     X_test, y_test = create_sequences(test_features_with_context, test_targets_with_context, seq_len)
     
-    log(f"Sequence split - Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")
+    log(f"Sequence split - Train: {len(X_train)} (step={train_sequence_step}), Val: {len(X_val)}, Test: {len(X_test)}")
     
     train_class_counts = torch.bincount(y_train)
     total_train_samples = len(y_train)
@@ -137,12 +148,12 @@ def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, drop
     model = create_model(input_dim, output_dim, hidden_dim=128, num_layers=3, dropout=dropout)
     
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
     batch_size = 32
     best_val_loss = float('inf')
-    patience = 8
+    patience = 4
     patience_counter = 0
     
     train_losses = []
@@ -217,24 +228,40 @@ def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, drop
     test_loss = 0.0
     correct = 0
     total = 0
-    
+    all_predicted = []
+    all_labels = []
+
     with torch.no_grad():
         for i in range(0, len(X_test), batch_size):
             X_batch = X_test[i:i + batch_size]
             y_batch = y_test[i:i + batch_size]
-            
+
             outputs = model(X_batch)
             loss = criterion(outputs, y_batch)
             test_loss += loss.item()
-            
+
             _, predicted = torch.max(outputs.data, 1)
             total += y_batch.size(0)
             correct += (predicted == y_batch).sum().item()
-    
+            all_predicted.append(predicted)
+            all_labels.append(y_batch)
+
+    all_predicted = torch.cat(all_predicted).numpy()
+    all_labels = torch.cat(all_labels).numpy()
+
     avg_test_loss = test_loss / (len(X_test) // batch_size + 1)
     test_accuracy = 100 * correct / total
-    
-    log(f"Test Loss: {avg_test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
+
+    # Balanced accuracy (average of per-class recall) — meaningful with imbalanced classes
+    n_classes = 2
+    recall_sum = 0.0
+    for c in range(n_classes):
+        mask = all_labels == c
+        if mask.sum() > 0:
+            recall_sum += (all_predicted[mask] == c).sum().item() / mask.sum().item()
+    balanced_accuracy = 100 * (recall_sum / n_classes)
+
+    log(f"Test Loss: {avg_test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%, Balanced Accuracy: {balanced_accuracy:.2f}%")
     log(f"Model saved to {model_path}")
     
     history_df = pd.DataFrame({
@@ -251,6 +278,7 @@ def train_lstm_model(epochs: int = 25, seq_len: int = 20, lr: float = 1e-3, drop
     test_metrics = {
         'test_loss': float(avg_test_loss),
         'test_accuracy': float(test_accuracy),
+        'test_balanced_accuracy': float(balanced_accuracy),
         'num_train_samples': int(len(X_train)),
         'num_val_samples': int(len(X_val)),
         'num_test_samples': int(len(X_test)),

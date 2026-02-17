@@ -73,20 +73,19 @@ def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def add_target_column(df: pd.DataFrame, threshold: float = 0.0) -> pd.DataFrame:
-
+def add_target_column(
+    df: pd.DataFrame,
+    threshold: float = 0.0,
+    forward_look_bars: int = 1,
+) -> pd.DataFrame:
+    """Add next-period return and a simple binary direction (used per-ticker; overwritten in build_full_dataset with mean+kσ)."""
     df = df.copy()
-    
-    df["close_shifted"] = df["close"].shift(-1)
-    
 
-    df["pct_change"] = (df["close_shifted"] - df["close"]) / df["close"]
-    
+    df["close_shifted"] = df["close"].shift(-forward_look_bars)
+    df["pct_change"] = (df["close_shifted"] - df["close"]) / df["close"].replace(0, 1e-10)
+    df["target_direction"] = (df["pct_change"] > 0).astype(int)
 
-    df["target_direction"] = (df["pct_change"]> 0).astype(int)
-    
     df = df.dropna(subset=["close_shifted"])
-    
     return df
 
 def build_train_and_test_datasets(train_ratio: float = 0.7) -> tuple:
@@ -119,55 +118,76 @@ def build_train_and_test_datasets(train_ratio: float = 0.7) -> tuple:
     
     return str(train_path), str(test_path)
 
-def build_full_dataset(tickers: list = None, bucket: str = "15min") -> str:
+def build_full_dataset(
+    tickers: list = None,
+    bucket: str = "15min",
+    forward_look_bars: int = 3,
+    sigma_k: float = None,
+    target_quantile: float = 0.70,
+) -> str:
+
     from src.utils.logging import log
     from src.utils.config_loader import load_watchlist
-    
+
     if tickers is None:
         tickers = load_watchlist()
-    
+
     sentiment_df = load_latest_sentiment_agg()
-    
+
     if sentiment_df.empty:
         log("Missing sentiment data. Cannot build dataset.")
         return ""
-    
+
     all_ticker_data = []
-    
+
     for ticker in tickers:
         price_df = load_latest_price_file(ticker)
-        
+
         if price_df.empty:
             log(f" No price data for {ticker}, skipping")
             continue
-        
+
         merged = merge_sentiment_with_price(sentiment_df, price_df, bucket)
         merged = add_technical_indicators(merged)
-        merged = add_target_column(merged)
-        
+        merged = add_target_column(merged, forward_look_bars=forward_look_bars)
+
         merged["ticker"] = ticker
-        
         all_ticker_data.append(merged)
         log(f" {ticker}: {len(merged)} samples")
-    
+
     if not all_ticker_data:
         log("No valid ticker data found. Cannot build dataset.")
         return ""
-    
-    full_df = pd.concat(all_ticker_data, ignore_index=True)
-    
 
+    full_df = pd.concat(all_ticker_data, ignore_index=True)
     full_df = full_df.sort_values("timestamp").reset_index(drop=True)
-    
+
+    pc = full_df["pct_change"]
+    if target_quantile is not None:
+        # Percentile-based: UP = top (1 - target_quantile) of returns → controllable balance
+        threshold = pc.quantile(target_quantile)
+        full_df["target_direction"] = (full_df["pct_change"] >= threshold).astype(int)
+        pct_up = 100 * full_df["target_direction"].mean()
+        log(f"Target threshold: quantile({target_quantile}) = {threshold:.6f} → ~{100 - target_quantile*100:.0f}% UP (actual {pct_up:.1f}%)")
+    else:
+        # Mean + k*sigma (tradable but often very imbalanced)
+        mean_ret = pc.mean()
+        std_ret = pc.std()
+        if std_ret == 0 or pd.isna(std_ret):
+            std_ret = 1e-10
+        k = sigma_k if sigma_k is not None else 1.5
+        threshold = mean_ret + k * std_ret
+        full_df["target_direction"] = (full_df["pct_change"] > threshold).astype(int)
+        log(f"Target threshold: mean + {k}*sigma = {threshold:.6f} (mean={mean_ret:.6f}, std={std_ret:.6f})")
+
     data_dir = project_root / "data" / "processed" / "datasets"
     data_dir.mkdir(parents=True, exist_ok=True)
-    
     full_path = data_dir / "full_dataset.csv"
     full_df.to_csv(full_path, index=False)
-    
+
     log(f"Full dataset saved: {len(full_df)} samples from {len(all_ticker_data)} tickers")
     log(f"Target distribution: {full_df['target_direction'].value_counts().to_dict()}")
-    
+
     return str(full_path)
 
 

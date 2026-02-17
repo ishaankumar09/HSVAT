@@ -18,8 +18,7 @@ stocks = [
     "ORCL", "CSCO", "ADBE", "BA", "LMT", "RTX", "NOC", "GD", "HON", "CAT",
     "JPM", "BAC", "WMT", "JNJ", "PG", "XOM", "CVX", "KO", "PEP",
     "COST", "HD", "MCD", "V", "MA", "UNH", "ABBV", "TMO", "ACN",
-    "ABT", "DHR", "NEE", "LIN", "BMY", "PM", "UNP", "QCOM", "TXN",
-    "LOW", "SCHW", "GS", "AXP", "BLK"
+    "ABT", "DHR", "NEE", "LIN", "BMY", "PM", "UNP", "QCOM",
 ]
 
 def build_query() -> str: 
