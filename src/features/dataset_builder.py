@@ -170,7 +170,6 @@ def build_full_dataset(
         pct_up = 100 * full_df["target_direction"].mean()
         log(f"Target threshold: quantile({target_quantile}) = {threshold:.6f} → ~{100 - target_quantile*100:.0f}% UP (actual {pct_up:.1f}%)")
     else:
-        # Mean + k*sigma (tradable but often very imbalanced)
         mean_ret = pc.mean()
         std_ret = pc.std()
         if std_ret == 0 or pd.isna(std_ret):

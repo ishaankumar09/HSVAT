@@ -84,6 +84,9 @@ def place_bracket_order(ticker: str, qty: int, side: str, take_profit: float, st
     if not client:
         return {"error": "Client not configured"}
     
+    take_profit = round(take_profit, 2)
+    stop_loss = round(stop_loss, 2)
+    
     try:
         from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest
         from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass

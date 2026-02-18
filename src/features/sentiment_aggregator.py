@@ -8,6 +8,8 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 def floor_timestamp_to_bucket(ts: pd.Timestamp, freq: str = "15Min") -> pd.Timestamp:
+    if isinstance(ts, datetime):
+        ts = pd.Timestamp(ts)
     return ts.floor(freq)
 
 def load_latest_sentiment()-> pd.DataFrame:

@@ -198,17 +198,16 @@ def execute_paper_trade(ticker: str, prediction: int, current_price: float, pric
         tp_pct = 0.02  
         log(f"  Fixed stops: SL={sl_pct*100:.1f}%, TP={tp_pct*100:.1f}%")
 
-    if prediction == 2: 
+    # Model: 0 = DOWN (short), 1 = UP (buy)
+    if prediction == 1:
         side = "buy"
         tp = calc_take_profit(current_price, tp_pct, "long")
         sl = stop_loss(current_price, sl_pct, "long")
-
-    elif prediction == 0: 
+    elif prediction == 0:
         side = "sell"
         tp = calc_take_profit(current_price, tp_pct, "short")
         sl = stop_loss(current_price, sl_pct, "short")
-        
-    else:  
+    else:
         log("Prediction is neutral, no trade")
         return {"action": "stay"}
     

@@ -222,7 +222,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             probs = predict_sequences(model, features_tensor)
                             prediction = torch.argmax(probs, dim=1).numpy()
                             
-                            action = predict_action(prediction[0], probs[0], confidence_threshold=0.6)
+                            action = predict_action(prediction[0], probs[0], confidence_threshold=0.57)
                             
                             confidence = probs[0][prediction[0]].item()
                             log(f"{ticker}: {action.upper()} (class={prediction[0]}, confidence={confidence:.1%}) at ${current_price:.2f}")

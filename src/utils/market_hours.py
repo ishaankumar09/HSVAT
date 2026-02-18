@@ -6,10 +6,11 @@ market_open = time(9, 30)
 market_close = time(16, 0)
 
 def is_market_open(current_time: datetime = None) -> bool:
-    if now is None:
+    if current_time is None:
         now = datetime.now(market_timezone)
 
     else: 
+        now = current_time
         if now.tzinfo is None:
             now = market_timezone.localize(now)
         else:
