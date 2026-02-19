@@ -189,13 +189,13 @@ def execute_paper_trade(ticker: str, prediction: int, current_price: float, pric
         atr = calc_atr(price_df, period=14)
         atr_pct = atr / current_price
         
-        sl_pct = max(0.005, min(0.03, atr_pct * 1.5))
+        sl_pct = max(0.015, min(0.05, atr_pct * 1.5))
         tp_pct = sl_pct * 2
         
         log(f"  ATR-based stops: SL={sl_pct*100:.2f}%, TP={tp_pct*100:.2f}%")
     else:
-        sl_pct = 0.01  
-        tp_pct = 0.02  
+        sl_pct = 0.015  
+        tp_pct = 0.03  
         log(f"  Fixed stops: SL={sl_pct*100:.1f}%, TP={tp_pct*100:.1f}%")
 
     # Model: 0 = DOWN (short), 1 = UP (buy)

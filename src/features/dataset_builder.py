@@ -21,31 +21,41 @@ def load_latest_price_file(ticker: str) ->pd.DataFrame:
 
 def load_latest_sentiment_agg() -> pd.DataFrame:
     data_dir = project_root / "data" / "processed" / "sentiment"
-    csv_files = glob.glob(str(data_dir / f"sentiment_agg_*.csv"))
 
-    if not csv_files:
+    # Prefer ticker-specific aggregated files (have a ticker column)
+    ticker_agg_files = glob.glob(str(data_dir / "sentiment_agg_by_ticker_*.csv"))
+    if ticker_agg_files:
+        latest_file = max(ticker_agg_files, key=lambda f: Path(f).stat().st_mtime)
+        return pd.read_csv(latest_file)
+
+    # Fall back to general aggregated files
+    general_agg_files = glob.glob(str(data_dir / "sentiment_agg_*.csv"))
+    if not general_agg_files:
         return pd.DataFrame()
-    
-    latest_file = csv_files[-1]
+
+    latest_file = max(general_agg_files, key=lambda f: Path(f).stat().st_mtime)
     return pd.read_csv(latest_file)
 
-def merge_sentiment_with_price(sentiment_df: pd.DataFrame, price_df: pd.DataFrame, bucket: str = "15min") -> pd.DataFrame:
-
+def merge_sentiment_with_price(sentiment_df: pd.DataFrame, price_df: pd.DataFrame, bucket: str = "15min", ticker: str = None) -> pd.DataFrame:
     price_df = price_df.copy()
     sentiment_df = sentiment_df.copy()
 
-    price_df['timestamp'] = pd.to_datetime(price_df['timestamp'],utc=True)
+    # If sentiment data has a ticker column, filter to the specific ticker only
+    if ticker and "ticker" in sentiment_df.columns:
+        sentiment_df = sentiment_df[sentiment_df["ticker"] == ticker].drop(columns=["ticker"])
+
+    price_df['timestamp'] = pd.to_datetime(price_df['timestamp'], utc=True)
     price_df['timestamp'] = price_df["timestamp"].apply(lambda x: floor_timestamp_to_bucket(x, bucket))
 
     sentiment_df["bucket_start"] = pd.to_datetime(sentiment_df["bucket_start"], utc=True)
-    
+
     sentiment_df = sentiment_df.sort_values("bucket_start")
     sentiment_df["bucket_start"] = sentiment_df["bucket_start"].shift(-1)
     sentiment_df = sentiment_df.dropna(subset=["bucket_start"])
 
     merged = pd.merge(price_df, sentiment_df, left_on="timestamp", right_on="bucket_start", how="left")
 
-    merged = merged.fillna(0)    
+    merged = merged.fillna(0)
     return merged
 
 def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -123,7 +133,7 @@ def build_full_dataset(
     bucket: str = "15min",
     forward_look_bars: int = 3,
     sigma_k: float = None,
-    target_quantile: float = 0.70,
+    target_quantile: float = 0.50,
 ) -> str:
 
     from src.utils.logging import log
@@ -147,7 +157,7 @@ def build_full_dataset(
             log(f" No price data for {ticker}, skipping")
             continue
 
-        merged = merge_sentiment_with_price(sentiment_df, price_df, bucket)
+        merged = merge_sentiment_with_price(sentiment_df, price_df, bucket, ticker=ticker)
         merged = add_technical_indicators(merged)
         merged = add_target_column(merged, forward_look_bars=forward_look_bars)
 

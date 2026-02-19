@@ -7,7 +7,7 @@ sys.path.insert(0, str(project_root))
 
 from src.utils.logging import log
 
-def is_blue_chip(ticker: str, min_market_cap: float = 10e9, min_volume: int = 5_000_000) -> bool:
+def is_blue_chip(ticker: str, min_market_cap: float = 1.5e9, min_volume: int = 5_000_000) -> bool:
     try: 
         stock = yf.Ticker(ticker)
         info = stock.info
@@ -29,7 +29,7 @@ def is_blue_chip(ticker: str, min_market_cap: float = 10e9, min_volume: int = 5_
         log(f" {ticker} validation failed: {e}")
         return False
     
-def has_sufficient_sentiment(num_posts: int, mean_sentiment: float, min_posts: int = 5, min_sentiment_strength: float = 0.3) -> bool:
+def has_sufficient_sentiment(num_posts: int, mean_sentiment: float, min_posts: int = 2, min_sentiment_strength: float = 0.3) -> bool:
     if num_posts < min_posts:
         return False
     

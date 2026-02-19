@@ -123,6 +123,18 @@ def train_lstm_model(
         train_features_tensor, train_targets_tensor, seq_len, step=train_sequence_step
     )
 
+    # Balance training sequences to 50/50 UP/DOWN so the model learns both directions
+    down_idx = (y_train == 0).nonzero(as_tuple=True)[0]
+    up_idx   = (y_train == 1).nonzero(as_tuple=True)[0]
+    min_count = min(len(down_idx), len(up_idx))
+    down_idx = down_idx[torch.randperm(len(down_idx))[:min_count]]
+    up_idx   = up_idx[torch.randperm(len(up_idx))[:min_count]]
+    balanced_idx = torch.cat([down_idx, up_idx])
+    balanced_idx = balanced_idx[torch.randperm(len(balanced_idx))]
+    X_train = X_train[balanced_idx]
+    y_train = y_train[balanced_idx]
+    log(f"Balanced train sequences: {len(X_train)} total ({min_count} DOWN + {min_count} UP)")
+
     val_context = train_features_tensor[-seq_len:]
     val_features_with_context = torch.cat([val_context, val_features_tensor], dim=0)
     val_targets_with_context = torch.cat([train_targets_tensor[-seq_len:], val_targets_tensor], dim=0)
@@ -138,7 +150,7 @@ def train_lstm_model(
     train_class_counts = torch.bincount(y_train)
     total_train_samples = len(y_train)
     class_weights = total_train_samples / (len(train_class_counts) * train_class_counts.float())
-    
+
     log(f"Class distribution (train): {train_class_counts.tolist()}")
     log(f"Class weights: {class_weights.tolist()}")
     
@@ -153,7 +165,7 @@ def train_lstm_model(
     
     batch_size = 32
     best_val_loss = float('inf')
-    patience = 4
+    patience = 7
     patience_counter = 0
     
     train_losses = []

@@ -18,7 +18,7 @@ from src.features.sentiment_aggregator import save_aggregated_sentiment
 from src.models.predict_lstm import load_trained_model, predict_direction_labels, predict_action, predict_sequences
 from src.models.train_lstm import FEATURE_COLS, create_sequences
 from src.trading.simulator import execute_paper_trade
-from src.trading.alpaca import get_account_info, get_positions
+from src.trading.alpaca import get_account_info, get_positions, close_position
 from src.trading.trade_logger import log_trade
 from src.utils.logging import log
 from src.utils.market_hours import is_market_open, wait_until_market_open
@@ -33,7 +33,7 @@ def get_ticker_from_sentiment() -> list:
         log("No sentiment data found")
         return []
     
-    latest_file = ticker_files [-1]
+    latest_file = ticker_files[-1]
     df = pd.read_csv(latest_file)
 
     if df.empty or "ticker" not in df.columns:
@@ -41,24 +41,22 @@ def get_ticker_from_sentiment() -> list:
     
     ticker_sentiment = df.groupby("ticker").agg({
         "sentiment_score": "mean",
-        "id" : "count"
+        "id": "count"
     }).reset_index()
 
     ticker_sentiment.columns = ["ticker", "avg_sentiment", "num_posts"]
 
     ticker_sentiment["abs_sentiment"] = ticker_sentiment["avg_sentiment"].abs()
-    ticker_sentiment = ticker_sentiment.sort_values('abs_sentiment', ascending=False)
+    ticker_sentiment = ticker_sentiment.sort_values("abs_sentiment", ascending=False)
 
-    tickers = ticker_sentiment["ticker"].tolist()
-
-    log(f"Found {len(tickers)} unique tickers in sentiment data")
-    if len(tickers) > 0:
+    log(f"Found {len(ticker_sentiment)} unique tickers in sentiment data")
+    if len(ticker_sentiment) > 0:
         top_5 = ticker_sentiment.head(5)
-        log(f"Top sentiment tickers:")
+        log("Top sentiment tickers:")
         for _, row in top_5.iterrows():
             log(f"  {row['ticker']}: {row['avg_sentiment']:.2f} ({int(row['num_posts'])} posts)")
-    
-    return tickers
+
+    return ticker_sentiment[["ticker", "avg_sentiment", "num_posts"]].to_dict("records")
 
 def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len: int = 20) -> tuple:
 
@@ -75,7 +73,7 @@ def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len:
     if sentiment_df.empty or price_df.empty:
         return None, None
     
-    merged = merge_sentiment_with_price(sentiment_df, price_df, bucket)
+    merged = merge_sentiment_with_price(sentiment_df, price_df, bucket, ticker=ticker)
     merged = add_technical_indicators(merged)
 
     if len(merged) < seq_len:
@@ -138,6 +136,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
 
     last_candle_time = None
     cycle_count = 0
+    position_entry_times = {}  # ticker -> datetime when we entered the position
 
     while True:
         if end_time and datetime.now(timezone.utc) >= end_time:
@@ -162,11 +161,11 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                 try:
                     if True:
                         log("Step 1: Collecting Reddit posts (every other cycle)...")
-                        save_reddit_posts(limit=75)
+                        save_reddit_posts(limit=150)
                         
                         log("Step 2: Collecting Twitter posts...")
                         try:
-                            save_tweets(limit=35)
+                            save_tweets(limit=60)
                         except Exception as e:
                             log(f"Twitter collection failed (will use Reddit only): {e}")
                         
@@ -186,16 +185,28 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                         time.sleep(30)
                         continue
                     
-                    log(f"\nFiltering {len(all_tickers)} tickers to blue chip stocks...")
+                    log(f"\nFiltering {len(all_tickers)} tickers (blue chip + min 2 posts)...")
                     blue_chip_tickers = []
-                    for ticker in all_tickers:
+                    skipped_low_posts = 0
+                    for entry in all_tickers:
+                        ticker = entry["ticker"]
+                        num_posts = int(entry["num_posts"])
+                        avg_sentiment = float(entry["avg_sentiment"])
+
+                        if not has_sufficient_sentiment(num_posts, avg_sentiment):
+                            skipped_low_posts += 1
+                            continue
+
                         if is_blue_chip(ticker):
                             blue_chip_tickers.append(ticker)
                             if len(blue_chip_tickers) >= max_tickers:
                                 break
-                    
+
+                    if skipped_low_posts:
+                        log(f"  Skipped {skipped_low_posts} tickers with insufficient sentiment data")
+
                     if not blue_chip_tickers:
-                        log("No blue chip stocks found with sentiment this cycle")
+                        log("No blue chip stocks with sufficient sentiment this cycle")
                         time.sleep(30)
                         continue
                     
@@ -205,11 +216,59 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                     
                     account = get_account_info()
                     account_balance = account.get("buying_power", 0) if account else 0
-                    
+
+                    # --- EXIT MANAGEMENT (time-based + model re-evaluation) ---
+                    positions = get_positions()
+                    open_symbols = {p["symbol"] for p in positions}
+
+                    for pos in positions:
+                        sym = pos["symbol"]
+                        pos_side = str(pos["side"]).lower()
+                        should_close = False
+                        close_reason = ""
+
+                        entry_time = position_entry_times.get(sym)
+                        if entry_time:
+                            age_minutes = (datetime.now(timezone.utc) - entry_time).total_seconds() / 60
+                            if age_minutes >= 60:
+                                should_close = True
+                                close_reason = f"time-based exit ({age_minutes:.0f} min open)"
+
+                        if not should_close:
+                            try:
+                                save_price_data(ticker=sym, interval="1m", period="1d")
+                                feat_tensor, _ = get_latest_features_lightweight(sym, bucket)
+                                if feat_tensor is not None:
+                                    probs = predict_sequences(model, feat_tensor)
+                                    pred = torch.argmax(probs, dim=1).numpy()[0]
+                                    conf = probs[0][pred].item()
+                                    if "long" in pos_side and pred == 0 and conf > 0.57:
+                                        should_close = True
+                                        close_reason = f"model flipped SHORT (conf={conf:.1%})"
+                                    elif "short" in pos_side and pred == 1 and conf > 0.57:
+                                        should_close = True
+                                        close_reason = f"model flipped BUY (conf={conf:.1%})"
+                            except Exception as e:
+                                log(f"{sym}: Model re-evaluation failed: {e}")
+
+                        if should_close:
+                            log(f"{sym}: Closing position — {close_reason}")
+                            close_result = close_position(sym)
+                            if "error" not in close_result:
+                                position_entry_times.pop(sym, None)
+                                open_symbols.discard(sym)
+                            else:
+                                log(f"{sym}: Failed to close: {close_result.get('error')}")
+
+                    # --- NEW TRADE ANALYSIS ---
                     for ticker in tickers_to_process:
                         try:
                             log(f"\n--- Analyzing {ticker} ---")
-                            
+
+                            if ticker in open_symbols:
+                                log(f"{ticker}: Already have an open position, skipping")
+                                continue
+
                             save_price_data(ticker=ticker, interval="1m", period="1d")
                             price_df = load_price_data(ticker=ticker, interval="1m", period="1d")
                             
@@ -231,6 +290,8 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                                 result = execute_paper_trade(ticker, int(prediction[0]), current_price, price_df)
                                 
                                 if "error" not in result:
+                                    position_entry_times[ticker] = datetime.now(timezone.utc)
+                                    open_symbols.add(ticker)
                                     order_id = result.get("id", "")
                                     status = result.get("status", "")
                                     
@@ -260,10 +321,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             log(f"Error processing {ticker}: {e}")
                             continue
                     
-                    positions = get_positions()
-                    if positions:
-                        log(f"\nOpen positions: {len(positions)}")
-                    
+                    log(f"\nOpen positions: {len(open_symbols)}")
                     log(f"Account balance: ${account_balance:,.2f}")
                     
                 except Exception as e:

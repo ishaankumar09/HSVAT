@@ -18,21 +18,9 @@ def load_config() -> dict:
     }
 
 def load_watchlist() -> list:
-    return [""
-        "AAPL",
-        "MSFT",
-        "GOOGL",
-        "AMZN",
-        "META",
-        "NVDA",
-        "AMD",
-        "INTC",
-        "TSLA",
-        "NFLX",
-        "DIS",
-        "BA",
-        "LMT",
-        "RTX",
-        "NOC",
-        "GD"
+    return [ "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AMD", "INTC",
+    "ORCL", "CSCO", "ADBE", "BA", "LMT", "RTX", "NOC", "GD", "HON", "CAT",
+    "JPM", "BAC", "WMT", "JNJ", "PG", "XOM", "CVX", "KO", "PEP",
+    "COST", "HD", "MCD", "V", "MA", "UNH", "ABBV", "TMO", "ACN",
+    "ABT", "DHR", "NEE", "LIN", "BMY", "PM", "UNP", "QCOM"
 ]
