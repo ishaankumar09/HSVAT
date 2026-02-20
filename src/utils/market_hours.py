@@ -55,3 +55,24 @@ def wait_until_market_open():
             sleep(min(3600, wait_seconds))
             
     print("Market is now open!")
+
+def is_near_market_close(current_time: datetime = None, minutes_before_close: int = 10) -> bool:
+    if current_time is None:
+        now = datetime.now(market_timezone)
+    else:
+        now = current_time
+        if now.tzinfo is None:
+            now = market_timezone.localize(now)
+        else:
+            now = now.astimezone(market_timezone)
+    
+    if now.weekday() >= 5:
+        return False
+    
+    current_time_obj = now.time()
+    close_time = market_close
+    
+    close_datetime = now.replace(hour=close_time.hour, minute=close_time.minute, second=0, microsecond=0)
+    time_until_close = (close_datetime - now).total_seconds() / 60
+    
+    return 0 < time_until_close <= minutes_before_close

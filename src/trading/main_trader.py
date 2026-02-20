@@ -18,10 +18,10 @@ from src.features.sentiment_aggregator import save_aggregated_sentiment
 from src.models.predict_lstm import load_trained_model, predict_direction_labels, predict_action, predict_sequences
 from src.models.train_lstm import FEATURE_COLS, create_sequences
 from src.trading.simulator import execute_paper_trade
-from src.trading.alpaca import get_account_info, get_positions, close_position
+from src.trading.alpaca import get_account_info, get_positions, close_position, close_all_positions
 from src.trading.trade_logger import log_trade
 from src.utils.logging import log
-from src.utils.market_hours import is_market_open, wait_until_market_open
+from src.utils.market_hours import is_market_open, wait_until_market_open, is_near_market_close
 from src.utils.stock_filter import is_blue_chip, has_sufficient_sentiment
 from src.features.sentiment_aggregator import floor_timestamp_to_bucket
 
@@ -136,7 +136,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
 
     last_candle_time = None
     cycle_count = 0
-    position_entry_times = {}  # ticker -> datetime when we entered the position
+    position_entry_times = {}
 
     while True:
         if end_time and datetime.now(timezone.utc) >= end_time:
@@ -150,6 +150,19 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                 log("Market closed. Waiting...")
                 wait_until_market_open()
                 continue
+            
+            if is_near_market_close(minutes_before_close=10):
+                positions = get_positions()
+                if positions:
+                    log(f"Near market close - closing all {len(positions)} open position(s)")
+                    close_result = close_all_positions()
+                    if "error" not in close_result:
+                        position_entry_times.clear()
+                        log("All positions closed before market close")
+                    else:
+                        log(f"Error closing all positions: {close_result.get('error')}")
+                else:
+                    log("Near market close - no open positions to close")
             
             current_time = datetime.now(timezone.utc)
             current_candle = floor_timestamp_to_bucket(current_time, bucket)
@@ -217,7 +230,6 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                     account = get_account_info()
                     account_balance = account.get("buying_power", 0) if account else 0
 
-                    # --- EXIT MANAGEMENT (time-based + model re-evaluation) ---
                     positions = get_positions()
                     open_symbols = {p["symbol"] for p in positions}
 
@@ -260,7 +272,6 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             else:
                                 log(f"{sym}: Failed to close: {close_result.get('error')}")
 
-                    # --- NEW TRADE ANALYSIS ---
                     for ticker in tickers_to_process:
                         try:
                             log(f"\n--- Analyzing {ticker} ---")

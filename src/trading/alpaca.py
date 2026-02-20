@@ -91,7 +91,21 @@ def place_bracket_order(ticker: str, qty: int, side: str, take_profit: float, st
         from alpaca.trading.requests import MarketOrderRequest, TakeProfitRequest, StopLossRequest
         from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass
         
-        order_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+
+        positions = get_positions()
+        existing_pos = next((p for p in positions if p["symbol"] == ticker), None)
+        if existing_pos:
+            log(f"Warning: {ticker} already has an open position ({existing_pos['side']}), skipping bracket order")
+            return {"error": f"Position already exists for {ticker}"}
+
+        if side == "buy":
+            order_side = OrderSide.BUY
+            log(f"Placing LONG bracket order: BUY {qty} {ticker} TP={take_profit} SL={stop_loss}")
+        elif side == "sell":
+            order_side = OrderSide.SELL
+            log(f"Placing SHORT bracket order: SELL {qty} {ticker} TP={take_profit} SL={stop_loss}")
+        else:
+            return {"error": f"Invalid side: {side}. Must be 'buy' or 'sell'"}
         
         order_data = MarketOrderRequest(
             symbol=ticker,
@@ -105,17 +119,19 @@ def place_bracket_order(ticker: str, qty: int, side: str, take_profit: float, st
         
         order = client.submit_order(order_data)
         
-        log(f"Bracket order placed: {side} {qty} {ticker} TP={take_profit} SL={stop_loss}")
+        log(f"Bracket order placed successfully: {side.upper()} {qty} {ticker} TP=${take_profit:.2f} SL=${stop_loss:.2f} (Order ID: {order.id})")
         
         return {
             "id": str(order.id),
             "symbol": order.symbol,
             "qty": str(order.qty),
             "side": str(order.side),
-            "status": str(order.status)
+            "status": str(order.status),
+            "take_profit": take_profit,
+            "stop_loss": stop_loss
         }
     except Exception as e:
-        log(f"Error placing bracket order: {e}")
+        log(f"Error placing bracket order for {ticker}: {e}")
         return {"error": str(e)}
 
 def get_positions() -> list:
@@ -140,6 +156,37 @@ def get_positions() -> list:
         log(f"Error getting positions: {e}")
         return []
 
+def cancel_orders_for_symbol(ticker: str) -> dict:
+    client = get_alpaca_client()
+    
+    if not client:
+        return {"error": "Client not configured"}
+    
+    try:
+        from alpaca.trading.requests import GetOrdersRequest
+        from alpaca.trading.enums import QueryOrderStatus
+        
+        request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+        orders = client.get_orders(request)
+        
+        cancelled_count = 0
+        for order in orders:
+            if order.symbol == ticker:
+                try:
+                    client.cancel_order_by_id(order.id)
+                    cancelled_count += 1
+                    log(f"Cancelled order {order.id} for {ticker}")
+                except Exception as e:
+                    log(f"Error cancelling order {order.id}: {e}")
+        
+        if cancelled_count > 0:
+            log(f"Cancelled {cancelled_count} open order(s) for {ticker}")
+        
+        return {"status": "cancelled", "count": cancelled_count}
+    except Exception as e:
+        log(f"Error cancelling orders for {ticker}: {e}")
+        return {"error": str(e)}
+
 def close_position(ticker: str) -> dict:
     client = get_alpaca_client()
     
@@ -147,9 +194,14 @@ def close_position(ticker: str) -> dict:
         return {"error": "Client not configured"}
     
     try:
+        cancel_result = cancel_orders_for_symbol(ticker)
+        
+        import time
+        time.sleep(0.5)
+        
         order = client.close_position(ticker)
         log(f"Position closed: {ticker}")
-        return {"status": "closed", "symbol": ticker}
+        return {"status": "closed", "symbol": ticker, "orders_cancelled": cancel_result.get("count", 0)}
     except Exception as e:
         log(f"Error closing position: {e}")
         return {"error": str(e)}
