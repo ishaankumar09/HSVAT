@@ -137,6 +137,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
     last_candle_time = None
     cycle_count = 0
     position_entry_times = {}
+    ticker_cooldowns = {}
 
     while True:
         if end_time and datetime.now(timezone.utc) >= end_time:
@@ -172,8 +173,10 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                 log(f"CYCLE #{cycle_count} - {current_candle.strftime('%Y-%m-%d %H:%M:%S UTC')}")
                 
                 try:
-                    if True:
-                        log("Step 1: Collecting Reddit posts (every other cycle)...")
+                    is_scrape_cycle = (cycle_count % 2 == 1)
+                    
+                    if is_scrape_cycle:
+                        log("Step 1: Collecting Reddit posts...")
                         save_reddit_posts(limit=150)
                         
                         log("Step 2: Collecting Twitter posts...")
@@ -190,6 +193,8 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                         
                         log("Step 5: Aggregating sentiment...")
                         save_aggregated_sentiment(bucket=bucket)
+                    else:
+                        log("Fast cycle — skipping scrape, using cached sentiment")
                     
                     all_tickers = get_ticker_from_sentiment()
                     
@@ -235,33 +240,15 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
 
                     for pos in positions:
                         sym = pos["symbol"]
-                        pos_side = str(pos["side"]).lower()
                         should_close = False
                         close_reason = ""
 
                         entry_time = position_entry_times.get(sym)
                         if entry_time:
                             age_minutes = (datetime.now(timezone.utc) - entry_time).total_seconds() / 60
-                            if age_minutes >= 60:
+                            if age_minutes >= 150:
                                 should_close = True
                                 close_reason = f"time-based exit ({age_minutes:.0f} min open)"
-
-                        if not should_close:
-                            try:
-                                save_price_data(ticker=sym, interval="1m", period="1d")
-                                feat_tensor, _ = get_latest_features_lightweight(sym, bucket)
-                                if feat_tensor is not None:
-                                    probs = predict_sequences(model, feat_tensor)
-                                    pred = torch.argmax(probs, dim=1).numpy()[0]
-                                    conf = probs[0][pred].item()
-                                    if "long" in pos_side and pred == 0 and conf > 0.57:
-                                        should_close = True
-                                        close_reason = f"model flipped SHORT (conf={conf:.1%})"
-                                    elif "short" in pos_side and pred == 1 and conf > 0.57:
-                                        should_close = True
-                                        close_reason = f"model flipped BUY (conf={conf:.1%})"
-                            except Exception as e:
-                                log(f"{sym}: Model re-evaluation failed: {e}")
 
                         if should_close:
                             log(f"{sym}: Closing position — {close_reason}")
@@ -269,8 +256,18 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             if "error" not in close_result:
                                 position_entry_times.pop(sym, None)
                                 open_symbols.discard(sym)
+                                ticker_cooldowns[sym] = datetime.now(timezone.utc) + timedelta(hours=1)
+                                log(f"{sym}: Cooldown set — no re-entry for 1 hour")
                             else:
                                 log(f"{sym}: Failed to close: {close_result.get('error')}")
+
+            
+                    for sym in list(position_entry_times.keys()):
+                        if sym not in open_symbols:
+                            position_entry_times.pop(sym, None)
+                            if sym not in ticker_cooldowns:
+                                ticker_cooldowns[sym] = datetime.now(timezone.utc) + timedelta(hours=1)
+                                log(f"{sym}: Position closed by bracket order — cooldown set for 1 hour")
 
                     for ticker in tickers_to_process:
                         try:
@@ -279,6 +276,14 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             if ticker in open_symbols:
                                 log(f"{ticker}: Already have an open position, skipping")
                                 continue
+
+                            cooldown_until = ticker_cooldowns.get(ticker)
+                            if cooldown_until and datetime.now(timezone.utc) < cooldown_until:
+                                remaining = (cooldown_until - datetime.now(timezone.utc)).total_seconds() / 60
+                                log(f"{ticker}: On cooldown — {remaining:.0f} min remaining, skipping")
+                                continue
+                            elif cooldown_until:
+                                ticker_cooldowns.pop(ticker, None)
 
                             save_price_data(ticker=ticker, interval="1m", period="1d")
                             price_df = load_price_data(ticker=ticker, interval="1m", period="1d")
