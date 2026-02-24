@@ -269,9 +269,17 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                                 ticker_cooldowns[sym] = datetime.now(timezone.utc) + timedelta(hours=1)
                                 log(f"{sym}: Position closed by bracket order — cooldown set for 1 hour")
 
+                    skip_new_trades = is_near_market_close(minutes_before_close=90)
+                    if skip_new_trades:
+                        log("Less than 90 min to market close — not opening new positions")
+
                     for ticker in tickers_to_process:
                         try:
                             log(f"\n--- Analyzing {ticker} ---")
+
+                            if skip_new_trades:
+                                log(f"{ticker}: Skipping — too close to market close")
+                                continue
 
                             if ticker in open_symbols:
                                 log(f"{ticker}: Already have an open position, skipping")

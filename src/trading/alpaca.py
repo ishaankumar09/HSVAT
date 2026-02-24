@@ -188,6 +188,7 @@ def cancel_orders_for_symbol(ticker: str) -> dict:
         return {"error": str(e)}
 
 def close_position(ticker: str) -> dict:
+    import time
     client = get_alpaca_client()
     
     if not client:
@@ -195,15 +196,42 @@ def close_position(ticker: str) -> dict:
     
     try:
         cancel_result = cancel_orders_for_symbol(ticker)
+        cancelled_count = cancel_result.get("count", 0)
         
-        import time
-        time.sleep(0.5)
+        max_retries = 5
+        for attempt in range(max_retries):
+            if cancelled_count > 0:
+                time.sleep(1.0 + attempt * 0.5)
+            else:
+                time.sleep(0.3)
+            
+            from alpaca.trading.requests import GetOrdersRequest
+            from alpaca.trading.enums import QueryOrderStatus
+            request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+            open_orders = client.get_orders(request)
+            remaining = [o for o in open_orders if o.symbol == ticker]
+            if remaining:
+                log(f"{ticker}: {len(remaining)} orders still open, waiting... (attempt {attempt + 1})")
+                for o in remaining:
+                    try:
+                        client.cancel_order_by_id(o.id)
+                    except Exception:
+                        pass
+                continue
+            
+            try:
+                order = client.close_position(ticker)
+                log(f"Position closed: {ticker}")
+                return {"status": "closed", "symbol": ticker, "orders_cancelled": cancelled_count}
+            except Exception as e:
+                if "held_for_orders" in str(e) and attempt < max_retries - 1:
+                    log(f"{ticker}: held_for_orders on attempt {attempt + 1}, retrying...")
+                    continue
+                raise
         
-        order = client.close_position(ticker)
-        log(f"Position closed: {ticker}")
-        return {"status": "closed", "symbol": ticker, "orders_cancelled": cancel_result.get("count", 0)}
+        return {"error": f"Failed to close {ticker} after {max_retries} retries"}
     except Exception as e:
-        log(f"Error closing position: {e}")
+        log(f"Error closing position for {ticker}: {e}")
         return {"error": str(e)}
 
 def close_all_positions() -> dict:

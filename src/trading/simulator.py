@@ -187,26 +187,26 @@ def execute_paper_trade(ticker: str, prediction: int, current_price: float, pric
     
     if price_df is not None and len(price_df) > 14:
         atr = calc_atr(price_df, period=14)
-        atr_pct = atr / current_price
-        
-        sl_pct = max(0.015, min(0.05, atr_pct * 1.5))
-        tp_pct = sl_pct * 2
-        
-        log(f"  ATR-based stops: SL={sl_pct*100:.2f}%, TP={tp_pct*100:.2f}%")
+        sl_distance = atr * 2.0
+        tp_distance = atr * 4.0
+        sl_distance = max(sl_distance, current_price * 0.015)
+        tp_distance = max(tp_distance, current_price * 0.03)
+        sl_pct = sl_distance / current_price
+        tp_pct = tp_distance / current_price
+        log(f"  ATR=${atr:.2f} → SL=${sl_distance:.2f} ({sl_pct*100:.2f}%), TP=${tp_distance:.2f} ({tp_pct*100:.2f}%)")
     else:
-        sl_pct = 0.015  
-        tp_pct = 0.03  
-        log(f"  Fixed stops: SL={sl_pct*100:.1f}%, TP={tp_pct*100:.1f}%")
+        sl_distance = current_price * 0.015
+        tp_distance = current_price * 0.03
+        log(f"  Fixed stops: SL=${sl_distance:.2f} (1.50%), TP=${tp_distance:.2f} (3.00%)")
 
-    # Model: 0 = DOWN (short), 1 = UP (buy)
     if prediction == 1:
         side = "buy"
-        tp = calc_take_profit(current_price, tp_pct, "long")
-        sl = stop_loss(current_price, sl_pct, "long")
+        tp = round(current_price + tp_distance, 2)
+        sl = round(current_price - sl_distance, 2)
     elif prediction == 0:
         side = "sell"
-        tp = calc_take_profit(current_price, tp_pct, "short")
-        sl = stop_loss(current_price, sl_pct, "short")
+        tp = round(current_price - tp_distance, 2)
+        sl = round(current_price + sl_distance, 2)
     else:
         log("Prediction is neutral, no trade")
         return {"action": "stay"}
