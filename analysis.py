@@ -44,16 +44,16 @@ def fetch_closed_orders(start: datetime, end: datetime = None) -> pd.DataFrame:
     orders = client.get_orders(request)
 
     for o in orders:
-        if str(o.status) != "filled":
+        if o.status.value != "filled":
             continue
         all_orders.append({
             "order_id": str(o.id),
             "symbol": o.symbol,
-            "side": str(o.side),
+            "side": o.side.value,
             "qty": float(o.filled_qty),
             "filled_price": float(o.filled_avg_price),
             "filled_at": pd.Timestamp(o.filled_at).tz_convert("US/Eastern"),
-            "order_type": str(o.order_class),
+            "order_type": o.order_class.value if o.order_class else "simple",
         })
 
     df = pd.DataFrame(all_orders)
@@ -226,9 +226,13 @@ def fetch_spy_benchmark(start_date: datetime, end_date: datetime) -> pd.DataFram
 
 def fetch_portfolio_history(start_date: datetime, end_date: datetime) -> pd.DataFrame:
     client = get_alpaca_client()
-    days = (end_date - start_date).days + 1
+    from alpaca.trading.requests import GetPortfolioHistoryRequest
     try:
-        history = client.get_portfolio_history(period=f"{max(days, 1)}D", timeframe="1H")
+        request = GetPortfolioHistoryRequest(
+            period=f"{max((end_date - start_date).days + 1, 1)}D",
+            timeframe="1H",
+        )
+        history = client.get_portfolio_history(request)
         return pd.DataFrame({
             "timestamp": [pd.Timestamp(t, unit="s", tz="US/Eastern") for t in history.timestamp],
             "equity": history.equity,
@@ -435,7 +439,7 @@ def fig_long_vs_short(trades_df: pd.DataFrame):
 
 
 def export_trades_csv(trades_df: pd.DataFrame):
-    trades_df.to_csv(OUTPUT_DIR / "trades_complete.csv", index=False)
+    trades_df.to_csv(output_dir / "trades_complete.csv", index=False)
     print("  Saved trades_complete.csv")
 
 
@@ -451,7 +455,7 @@ def export_summary_txt(stats: dict, stock_stats: pd.DataFrame, trades_df: pd.Dat
         f"Total trading days: {trades_df['entry_time'].dt.date.nunique()}",
         f"Date range: {trades_df['entry_time'].min()} to {trades_df['exit_time'].max()}",
     ]
-    (OUTPUT_DIR / "analysis_summary.txt").write_text("\n".join(lines))
+    (output_dir / "analysis_summary.txt").write_text("\n".join(lines))
     print("  Saved analysis_summary.txt")
 
 
@@ -464,7 +468,7 @@ def main():
     args = parser.parse_args()
 
     start_date = datetime.strptime(args.start, "%Y-%m-%d").replace(tzinfo=timezone.utc) if args.start else datetime.now(timezone.utc) - timedelta(days=args.days)
-    end_date = datetime.strptime(args.end, "%Y-%m-%d").replace(tzinfo=timezone.utc) if args.end else datetime.now(timezone.utc)
+    end_date = datetime.strptime(args.end, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1) if args.end else datetime.now(timezone.utc)
 
     for d in [output_dir, figures_dir, tables_dir]:
         d.mkdir(parents=True, exist_ok=True)
