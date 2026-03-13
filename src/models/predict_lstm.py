@@ -9,9 +9,9 @@ sys.path.insert(0, str(project_root))
 from src.models.lstm_model import TinyLSTM
 from src.utils.logging import log
 
-def load_trained_model() -> tuple:
+def load_trained_model(model_name: str = "lstm_volatility.pt") -> tuple:
     
-    model_path = project_root / "models" / "lstm_volatility.pt"
+    model_path = project_root / "models" / model_name
     
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}. Train the model first.")

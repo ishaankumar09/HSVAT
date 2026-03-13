@@ -6,30 +6,31 @@ import sys
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-spreadsheet_path= project_root / "data" / "logs" / "trades_spreadsheet.csv"
+_spreadsheet_name = "trades_spreadsheet.csv"
+
+def set_spreadsheet_file(filename: str):
+    global _spreadsheet_name
+    _spreadsheet_name = filename
+
+def _get_path():
+    return project_root / "data" / "logs" / _spreadsheet_name
+
+COLUMNS = [
+    "Timestamp", "Ticker", "Action", "Prediction", "Entry Price",
+    "Quantity", "Order ID", "Status", "Take Profit", "Stop Loss",
+    "Account Balance", "Notes"
+]
 
 def init_spreadsheet():
-    if not spreadsheet_path.exists():
-        df = pd.DataFrame(columns = [
-           "Timestamp",
-            "Ticker",
-            "Action",
-            "Prediction",
-            "Entry Price",
-            "Quantity",
-            "Order ID",
-            "Status",
-            "Take Profit",
-            "Stop Loss",
-            "Account Balance",
-            "Notes" 
-        ])
-        df.to_csv(spreadsheet_path, index = False)
+    path = _get_path()
+    if not path.exists():
+        pd.DataFrame(columns=COLUMNS).to_csv(path, index=False)
 
 def log_trade(trade_data: dict):
     init_spreadsheet()
+    path = _get_path()
 
-    df = pd.read_csv(spreadsheet_path)
+    df = pd.read_csv(path)
 
     new_row = {
         "Timestamp": trade_data.get("timestamp", datetime.now(timezone.utc).isoformat()),
@@ -47,13 +48,14 @@ def log_trade(trade_data: dict):
     }
 
     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    df.to_csv(spreadsheet_path, index=False)
+    df.to_csv(path, index=False)
 
-    return str(spreadsheet_path)
+    return str(path)
 
 def upd_trade_status(order_id: str, status: str, notes: str = ""):
-    init_spreadsheet
-    df = pd.read_csv(spreadsheet_path)
+    init_spreadsheet()
+    path = _get_path()
+    df = pd.read_csv(path)
 
     if "Order ID" in df.columns:
         mask = df["Order ID"] == order_id
@@ -61,13 +63,13 @@ def upd_trade_status(order_id: str, status: str, notes: str = ""):
             df.loc[mask, "Status"] = status
             if notes:
                 df.loc[mask, "Notes"] = notes
-            df.to_csv(spreadsheet_path, index=False)
+            df.to_csv(path, index=False)
             return True
     return False
 
 def get_all_trades() -> pd.DataFrame:
     init_spreadsheet()
-    return pd.read_csv(spreadsheet_path)
+    return pd.read_csv(_get_path())
 
 
 

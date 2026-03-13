@@ -16,7 +16,7 @@ from src.features.sentiment_annotator import save_sentiment
 from src.features.ticker_sorter import save_via_ticker
 from src.features.sentiment_aggregator import save_aggregated_sentiment
 from src.models.predict_lstm import load_trained_model, predict_direction_labels, predict_action, predict_sequences
-from src.models.train_lstm import FEATURE_COLS, create_sequences
+from src.models.train_lstm import FEATURE_COLS, PRICE_ONLY_COLS, create_sequences
 from src.trading.simulator import execute_paper_trade
 from src.trading.alpaca import get_account_info, get_positions, close_position, close_all_positions
 from src.trading.trade_logger import log_trade
@@ -58,7 +58,7 @@ def get_ticker_from_sentiment() -> list:
 
     return ticker_sentiment[["ticker", "avg_sentiment", "num_posts"]].to_dict("records")
 
-def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len: int = 20) -> tuple:
+def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len: int = 20, control_mode: bool = False) -> tuple:
 
     from src.features.dataset_builder import (
         load_latest_sentiment_agg,
@@ -67,25 +67,31 @@ def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len:
         add_technical_indicators,
     )
 
-    sentiment_df = load_latest_sentiment_agg()
     price_df = load_latest_price_file(ticker)
-
-    if sentiment_df.empty or price_df.empty:
+    if price_df.empty:
         return None, None
-    
-    merged = merge_sentiment_with_price(sentiment_df, price_df, bucket, ticker=ticker)
-    merged = add_technical_indicators(merged)
+
+    if control_mode:
+        merged = add_technical_indicators(price_df)
+    else:
+        sentiment_df = load_latest_sentiment_agg()
+        if sentiment_df.empty:
+            return None, None
+        merged = merge_sentiment_with_price(sentiment_df, price_df, bucket, ticker=ticker)
+        merged = add_technical_indicators(merged)
 
     if len(merged) < seq_len:
         return None, None
     
     merged = merged.tail(seq_len)
 
-    available_features = [c for c in FEATURE_COLS if c in merged.columns]
+    cols = PRICE_ONLY_COLS if control_mode else FEATURE_COLS
+    available_features = [c for c in cols if c in merged.columns]
     features = merged[available_features].values
 
     try: 
-        model, mean, std, input_dim, output_dim = load_trained_model()
+        model_name = "lstm_price_only.pt" if control_mode else "lstm_volatility.pt"
+        model, mean, std, input_dim, output_dim = load_trained_model(model_name)
         if mean is not None and std is not None:
             features = (features - mean) / std
         else: 
@@ -104,22 +110,23 @@ def get_latest_features_lightweight(ticker: str, bucket: str = "15min", seq_len:
 
     return features_tensor, current_price
 
-def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: float = None):
+def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: float = None, control_mode: bool = False):
     if duration_hours:
         log(f"Trading Bot running for {duration_hours} hours")
     else: 
         log("Trading Bot running 24/7 (only trade during market hours)")
 
-    model_path = project_root / "models" / "lstm_volatility.pt"
+    model_file = "lstm_price_only.pt" if control_mode else "lstm_volatility.pt"
+    model_path = project_root / "models" / model_file
     if not model_path.exists():
-        log("Model not found, run setup")
+        log(f"Model not found ({model_file}), run setup")
         return
     
     wait_until_market_open()
 
     try:
-        model, mean, std, input_dim, output_dim = load_trained_model()
-        log(" Model loaded successfully")
+        model, mean, std, input_dim, output_dim = load_trained_model(model_file)
+        log(f" Model loaded successfully ({model_file})")
     except Exception as e:
         log(f" Error loading model: {e}")
         return
@@ -173,64 +180,69 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                 log(f"CYCLE #{cycle_count} - {current_candle.strftime('%Y-%m-%d %H:%M:%S UTC')}")
                 
                 try:
-                    is_scrape_cycle = (cycle_count % 2 == 1)
-                    
-                    if is_scrape_cycle:
-                        log("Step 1: Collecting Reddit posts...")
-                        save_reddit_posts(limit=150)
-                        
-                        log("Step 2: Collecting Twitter posts...")
-                        try:
-                            save_tweets(limit=60)
-                        except Exception as e:
-                            log(f"Twitter collection failed (will use Reddit only): {e}")
-                        
-                        log("Step 3: Annotating sentiment with FinBERT...")
-                        save_sentiment(use_finbert=True)
-                        
-                        log("Step 4: Sorting posts by ticker with GPT-4o...")
-                        save_via_ticker(use_gpt4=True)
-                        
-                        log("Step 5: Aggregating sentiment...")
-                        save_aggregated_sentiment(bucket=bucket)
+                    if control_mode:
+                        from src.utils.config_loader import load_watchlist
+                        tickers_to_process = load_watchlist()[:max_tickers]
+                        log(f"Control mode — fixed watchlist: {', '.join(tickers_to_process)}")
                     else:
-                        log("Fast cycle — skipping scrape, using cached sentiment")
-                    
-                    all_tickers = get_ticker_from_sentiment()
-                    
-                    if not all_tickers:
-                        log("No tickers found in sentiment data, skipping this cycle")
-                        time.sleep(30)
-                        continue
-                    
-                    log(f"\nFiltering {len(all_tickers)} tickers (blue chip + min 2 posts)...")
-                    blue_chip_tickers = []
-                    skipped_low_posts = 0
-                    for entry in all_tickers:
-                        ticker = entry["ticker"]
-                        num_posts = int(entry["num_posts"])
-                        avg_sentiment = float(entry["avg_sentiment"])
-
-                        if not has_sufficient_sentiment(num_posts, avg_sentiment):
-                            skipped_low_posts += 1
+                        is_scrape_cycle = (cycle_count % 2 == 1)
+                        
+                        if is_scrape_cycle:
+                            log("Step 1: Collecting Reddit posts...")
+                            save_reddit_posts(limit=150)
+                            
+                            log("Step 2: Collecting Twitter posts...")
+                            try:
+                                save_tweets(limit=60)
+                            except Exception as e:
+                                log(f"Twitter collection failed (will use Reddit only): {e}")
+                            
+                            log("Step 3: Annotating sentiment with FinBERT...")
+                            save_sentiment(use_finbert=True)
+                            
+                            log("Step 4: Sorting posts by ticker with GPT-4o...")
+                            save_via_ticker(use_gpt4=True)
+                            
+                            log("Step 5: Aggregating sentiment...")
+                            save_aggregated_sentiment(bucket=bucket)
+                        else:
+                            log("Fast cycle — skipping scrape, using cached sentiment")
+                        
+                        all_tickers = get_ticker_from_sentiment()
+                        
+                        if not all_tickers:
+                            log("No tickers found in sentiment data, skipping this cycle")
+                            time.sleep(30)
                             continue
+                        
+                        log(f"\nFiltering {len(all_tickers)} tickers (blue chip + min 2 posts)...")
+                        blue_chip_tickers = []
+                        skipped_low_posts = 0
+                        for entry in all_tickers:
+                            ticker = entry["ticker"]
+                            num_posts = int(entry["num_posts"])
+                            avg_sentiment = float(entry["avg_sentiment"])
 
-                        if is_blue_chip(ticker):
-                            blue_chip_tickers.append(ticker)
-                            if len(blue_chip_tickers) >= max_tickers:
-                                break
+                            if not has_sufficient_sentiment(num_posts, avg_sentiment):
+                                skipped_low_posts += 1
+                                continue
 
-                    if skipped_low_posts:
-                        log(f"  Skipped {skipped_low_posts} tickers with insufficient sentiment data")
+                            if is_blue_chip(ticker):
+                                blue_chip_tickers.append(ticker)
+                                if len(blue_chip_tickers) >= max_tickers:
+                                    break
 
-                    if not blue_chip_tickers:
-                        log("No blue chip stocks with sufficient sentiment this cycle")
-                        time.sleep(30)
-                        continue
-                    
-                    tickers_to_process = blue_chip_tickers
-                    log(f"\n Found {len(tickers_to_process)} blue chip stocks to analyze:")
-                    log(f"  {', '.join(tickers_to_process)}")
+                        if skipped_low_posts:
+                            log(f"  Skipped {skipped_low_posts} tickers with insufficient sentiment data")
+
+                        if not blue_chip_tickers:
+                            log("No blue chip stocks with sufficient sentiment this cycle")
+                            time.sleep(30)
+                            continue
+                        
+                        tickers_to_process = blue_chip_tickers
+                        log(f"\n Found {len(tickers_to_process)} blue chip stocks to analyze:")
+                        log(f"  {', '.join(tickers_to_process)}")
                     
                     account = get_account_info()
                     account_balance = account.get("buying_power", 0) if account else 0
@@ -296,7 +308,7 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                             save_price_data(ticker=ticker, interval="1m", period="1d")
                             price_df = load_price_data(ticker=ticker, interval="1m", period="1d")
                             
-                            features_tensor, current_price = get_latest_features_lightweight(ticker, bucket)
+                            features_tensor, current_price = get_latest_features_lightweight(ticker, bucket, control_mode=control_mode)
                             
                             if features_tensor is None:
                                 log(f"{ticker}: Insufficient feature data, skipping")

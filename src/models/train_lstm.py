@@ -17,6 +17,10 @@ FEATURE_COLS = [
     "num_posts", "num_pos", "num_neg", "num_neu", "mean_sentiment_score",
     "rsi", "sma_20", "sma_50", "momentum", "volume_ratio"
 ]
+PRICE_ONLY_COLS = [
+    "open", "high", "low", "close", "volume",
+    "rsi", "sma_20", "sma_50", "momentum", "volume_ratio"
+]
 TARGET_COL = "target_direction"
 
 def load_dataset(path: str, fit_scaler: bool = True, scaler_params: dict = None) -> tuple:
@@ -65,6 +69,8 @@ def train_lstm_model(
     lr: float = 1e-3,
     dropout: float = 0.375,
     train_sequence_step: int = 7,
+    feature_cols: list = None,
+    model_name: str = "lstm_volatility.pt",
 ) -> None:
     full_dataset_path = project_root / "data" / "processed" / "datasets" / "full_dataset.csv"
     
@@ -85,7 +91,9 @@ def train_lstm_model(
     
     log(f"Raw data split - Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}")
     
-    available_features = [c for c in FEATURE_COLS if c in df.columns]
+    cols = feature_cols if feature_cols else FEATURE_COLS
+    available_features = [c for c in cols if c in df.columns]
+    log(f"Using {len(available_features)} features: {available_features}")
     
     train_features = df_train[available_features].values
     train_targets = df_train[TARGET_COL].values
@@ -218,7 +226,7 @@ def train_lstm_model(
 
             model_dir = project_root / "models"
             model_dir.mkdir(parents=True, exist_ok=True)
-            model_path = model_dir / "lstm_volatility.pt"
+            model_path = model_dir / model_name
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'mean': mean,
@@ -282,7 +290,8 @@ def train_lstm_model(
         'val_loss': val_losses
     })
     
-    history_path = model_dir / "training_history.csv"
+    base_name = model_name.replace(".pt", "")
+    history_path = model_dir / f"{base_name}_history.csv"
     history_df.to_csv(history_path, index=False)
     log(f"Training history saved to {history_path}")
     
@@ -299,7 +308,7 @@ def train_lstm_model(
         'timestamp': pd.Timestamp.now(tz='UTC').isoformat()
     }
     
-    metrics_path = model_dir / "test_metrics.json"
+    metrics_path = model_dir / f"{base_name}_metrics.json"
     with open(metrics_path, 'w') as f:
         json.dump(test_metrics, f, indent=2)
     log(f"Test metrics saved to {metrics_path}")

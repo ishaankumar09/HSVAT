@@ -1,0 +1,11 @@
+{
+  "test_loss": 0.695405648021165,
+  "test_accuracy": 54.18694621240484,
+  "test_balanced_accuracy": 54.40168717713958,
+  "num_train_samples": 10572,
+  "num_val_samples": 16025,
+  "num_test_samples": 16026,
+  "final_epoch": 15,
+  "best_val_loss": 0.6857078393062431,
+  "timestamp": "2026-03-13T02:24:53.226831+00:00"
+}

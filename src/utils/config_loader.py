@@ -14,7 +14,9 @@ def load_config() -> dict:
         "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
         "ALPACA_API_KEY": os.getenv("ALPACA_API_KEY"),
         "ALPACA_SECRET_KEY": os.getenv("ALPACA_SECRET_KEY"),
-        "ALPACA_BASE_URL": os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
+        "ALPACA_BASE_URL": os.getenv("ALPACA_BASE_URL", "https://paper-api.alpaca.markets"),
+        "ALPACA_CONTROL_KEY": os.getenv("ALPACA_CONTROL_KEY"),
+        "ALPACA_CONTROL_SECRET_KEY": os.getenv("ALPACA_CONTROL_SECRET_KEY")
     }
 
 def load_watchlist() -> list:
