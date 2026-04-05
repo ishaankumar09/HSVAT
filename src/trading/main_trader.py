@@ -182,8 +182,8 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
                 try:
                     if control_mode:
                         from src.utils.config_loader import load_watchlist
-                        tickers_to_process = load_watchlist()[:max_tickers]
-                        log(f"Control mode — fixed watchlist: {', '.join(tickers_to_process)}")
+                        tickers_to_process = load_watchlist()
+                        log(f"Control mode — watchlist: {len(tickers_to_process)} tickers")
                     else:
                         is_scrape_cycle = (cycle_count % 2 == 1)
                         
@@ -378,7 +378,3 @@ def run_trading(bucket: str = "15min", max_tickers: int = 5, duration_hours: flo
             log(traceback.format_exc())
             log("Waiting 60 seconds before retry...")
             time.sleep(60)
-
-        
-
-

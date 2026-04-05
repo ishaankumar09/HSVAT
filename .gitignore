@@ -11,7 +11,10 @@ data/raw/
 data/processed/
 data/logs/
 data/analysis/
+data/old/
 
 models/*.pt
+models/*.csv
+models/*.json
 
 .DS_Store
